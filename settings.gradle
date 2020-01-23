@@ -1,0 +1,2 @@
+include ':app'
+rootProject.name='Lesson_23_another_process'
