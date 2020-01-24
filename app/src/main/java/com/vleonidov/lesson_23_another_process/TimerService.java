@@ -8,12 +8,9 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.os.Build;
-import android.os.Bundle;
 import android.os.CountDownTimer;
 import android.os.Handler;
 import android.os.IBinder;
-import android.os.Message;
-import android.os.Messenger;
 import android.os.RemoteException;
 import android.util.Log;
 
@@ -46,9 +43,6 @@ public class TimerService extends Service {
 
     private CountDownTimer mCountDownTimer;
 
-    private Messenger mServiceMessenger = new Messenger(new MessengerHandler());
-
-    private Messenger mClientMessenger;
 
     @Override
     public void onCreate() {
@@ -88,7 +82,7 @@ public class TimerService extends Service {
     public IBinder onBind(Intent intent) {
         Log.d(TAG, "onBind() called with: intent = [" + intent + "]");
 
-        return mServiceMessenger.getBinder();
+        return mTimerServiceAIDL.asBinder();
     }
 
     @Override
@@ -98,13 +92,13 @@ public class TimerService extends Service {
         return super.onUnbind(intent);
     }
 
+
     public void startCountdownTimer(long time, long period) {
         mCountDownTimer = new CountDownTimer(time, period) {
             @Override
             public void onTick(long millisUntilFinished) {
                 Log.d(TAG, "onTick() called with: millisUntilFinished = [" + millsToSeconds(millisUntilFinished) + "]");
 
-                sendCurrentTime(millsToSeconds(millisUntilFinished));
 
                 startForeground(NOTIFICATION_ID, createNotification(millsToSeconds(millisUntilFinished)));
 //                updateNotification(createNotification(millsToSeconds(millisUntilFinished)));
@@ -121,22 +115,6 @@ public class TimerService extends Service {
         mCountDownTimer.start();
     }
 
-    private void sendCurrentTime(long time) {
-        Message message = Message.obtain(null, MSG_TIMER_CALLED);
-
-        Bundle bundle = new Bundle();
-        bundle.putString(BUNDLE_CURRENT_TIME, "Time: " + time);
-
-        message.setData(bundle);
-
-        if (mClientMessenger != null) {
-            try {
-                mClientMessenger.send(message);
-            } catch (RemoteException e) {
-                e.printStackTrace();
-            }
-        }
-    }
 
     private Notification createNotification(long currentTime) {
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID);
@@ -188,24 +166,17 @@ public class TimerService extends Service {
         return time / 1000L;
     }
 
-    public class MessengerHandler extends Handler {
+    private Handler mHandler = new Handler();
+
+    private ITimerServiceAIDL.Stub mTimerServiceAIDL = new ITimerServiceAIDL.Stub() {
         @Override
-        public void handleMessage(@NonNull Message msg) {
-            super.handleMessage(msg);
-
-            switch (msg.what) {
-                case MSG_START_TIMER:
-                    long time = msg.getData().getLong(BUNDLE_KEY_TIME);
-
-                    mClientMessenger = msg.replyTo;
-
-                    startCountdownTimer(time, 1000L);
-                    break;
-                case MSG_STOP_TIMER:
-                    stopCountdownTimer();
-                    break;
-                default:
-            }
+        public void startTimer(final long time, final long period) throws RemoteException {
+            mHandler.post(new Runnable() {
+                @Override
+                public void run() {
+                    startCountdownTimer(time, period);
+                }
+            });
         }
-    }
+    };
 }
